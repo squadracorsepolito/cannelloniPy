@@ -45,7 +45,7 @@ struct __attribute__((__packed__)) cannelloni_data_packet {
   /* Sequence Number */
   uint8_t seq_no;
   /* Number of CAN Messages in this packet */
-  uint16_t count;
+  uint16_t  ;
 };
 
 typedef uint32_t canid_t;
