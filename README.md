@@ -33,7 +33,7 @@ The message format is the same as the one used in the Cannelloni library:
 ## Usage
 ```python
 # Import the library
-from cannellonipy import run_cannelloni, CannelloniHandle
+from cannellonipy import run_cannellonipy, CannelloniHandle
 
 # Create a cannellonipy handle
 cannellonipy_handle = CannelloniHandle()
