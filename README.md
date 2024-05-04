@@ -3,6 +3,9 @@ Python version of the [Cannelloni library](https://github.com/mguentner/cannello
 
 For now implemented only on the receiver side.
 
+## General logic of the library
+![Cannelloni library logic](/img/cannelloni.png)
+
 ## Installation
 Simply copy and paste the `cannellonipy.py` file into your project.
 
@@ -28,6 +31,6 @@ handle.clear_received_can_frames()
 An example of usage can be found in the `usageTest.py` file.
 
 ## TODO
-- [ ] Implement CAN transmit
-- [ ] Implement CAN receive
-- [ ] Implement tests
+- :white_square_button: Implement CAN transmit
+- :white_square_button: Implement CAN receive
+- :white_square_button: Implement tests
