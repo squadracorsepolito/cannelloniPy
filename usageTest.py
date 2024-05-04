@@ -36,6 +36,3 @@ while True:
     received_frames = handle.get_received_can_frames()
     for frame in received_frames:
         print("Received CAN frame -> CAN ID:", frame.can_id, ", Length:", frame.len, ", Data:", frame.data[:frame.len].hex())
-
-    # After processing, clear the received frames buffer
-    handle.clear_received_can_frames()

@@ -115,6 +115,7 @@ class CannelloniHandle:
             if frame is None:
                 break
             frames.append(frame)
+        self.clear_received_can_frames()
         return frames
 
     def clear_received_can_frames(self):

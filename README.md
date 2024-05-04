@@ -24,9 +24,6 @@ run_cannellonipy(cannellonipy_handle, "0.0.0.0", 1234)
 received_frames = handle.get_received_can_frames()
 for frame in received_frames:
     print("Received CAN frame -> CAN ID:", frame.can_id, ", Length:", frame.len, ", Data:", frame.data[:frame.len].hex())
-
-# After processing, clear the received frames from the buffer
-handle.clear_received_can_frames()
 ```
 An example of usage can be found in the `usageTest.py` file.
 
