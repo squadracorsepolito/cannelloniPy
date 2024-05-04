@@ -9,6 +9,27 @@ For now implemented only on the receiver side.
 ## Installation
 Simply copy and paste the `cannellonipy.py` file into your project.
 
+## Cannelloni message format
+The message format is the same as the one used in the Cannelloni library:
+```txt
+# UDP packet format:
+# 1 byte - Version
+# 1 byte - Operation code
+# 1 byte - Sequence number
+# 1 byte - Number of CAN frames
+# First CAN frame:
+# - CAN frame format:
+# - 4 bytes - CAN ID
+# - 1 byte - Length of hexadecimal data
+# - N bytes - Data
+# Second CAN frame:
+# ...
+
+# -----------------------------------------------------------------------------------------
+# | Version | Operation code | Sequence number | Number of CAN frames | CAN frame 1 | ... |
+# -----------------------------------------------------------------------------------------
+```
+
 ## Usage
 ```python
 # Import the library
