@@ -5,11 +5,12 @@ import time
 
 # ---------------------------- Constants ----------------------------
 CANNELLONI_FRAME_VERSION = 2
-CNL_DATA = 1
+OPCODE = 1
 CANFD_FRAME = 0x80
-CANNELLONI_DATA_PACKET_BASE_SIZE = 5
+CANNELLONI_DATA_PACKET_BASE_SIZE = 4
 CANNELLONI_FRAME_BASE_SIZE = 5
-PORT = 1234
+CAN_RTR_FLAG = 0x40000000
+
 REMOTE_PORT = 1234
 REMOTE_IP = "0.0.0.0"
 
@@ -52,15 +53,13 @@ class CannelloniHandle:
         self.sequence_number = 0
         self.udp_rx_count = 0
         self.Init = {
-            #"port": port,
             "addr": REMOTE_IP,
             "remote_port": REMOTE_PORT,
             "can_buf_size": can_buf_size,
             "can_tx_buf": [CanfdFrame() for _ in range(can_buf_size)],
             "can_rx_buf": [CanfdFrame() for _ in range(can_buf_size)],
             "can_tx_fn": can_tx_fn,
-            "can_rx_fn": can_rx_fn,
-            "user_data": None
+            "can_rx_fn": can_rx_fn
         }
         self.tx_queue = FramesQueue(can_buf_size)
         self.rx_queue = FramesQueue(can_buf_size)
@@ -68,54 +67,64 @@ class CannelloniHandle:
         self.can_pcb = None
 
     def handle_cannelloni_frame(handle, data, addr):
-        if len(data) < CANNELLONI_DATA_PACKET_BASE_SIZE:
-            return
-
         try:
-            version, op_code, seq_no, count = struct.unpack('!BBBB', data[:CANNELLONI_DATA_PACKET_BASE_SIZE])
-        except struct.error:
+            if len(data) < CANNELLONI_DATA_PACKET_BASE_SIZE:
+                print("Received incomplete packet")
+                return
+
+            try:
+                version, op_code, seq_no, count = struct.unpack('!BBBB', data[:CANNELLONI_DATA_PACKET_BASE_SIZE])
+            except struct.error:
+                print("Failed to unpack data")
+                return
+                
+            if version != CANNELLONI_FRAME_VERSION or op_code != OPCODE:
+                print("Invalid version or operation code")
+                return
+
+            pos = CANNELLONI_DATA_PACKET_BASE_SIZE
+            handle.udp_rx_count += 1
+
+            for _ in range(count):
+                if pos + CANNELLONI_FRAME_BASE_SIZE > len(data):
+                    print("Received incomplete packet 2")
+                    break
+
+                # Unpack the CAN frame
+                can_frame = CanfdFrame()
+                can_frame.can_id, can_frame.len = struct.unpack('!IB', data[pos:pos+5])
+                pos += 5
+                length = can_frame.len & ~CANFD_FRAME
+                can_frame.flags = can_frame.len & CANFD_FRAME
+                can_frame.len = length
+                if (can_frame.can_id & CAN_RTR_FLAG) == 0:
+                    can_frame.data[:length] = data[pos + 5:pos + 5 + length]
+
+                handle.rx_queue.put(can_frame)
+
+                # Print the received CAN frame data
+                # print("Received CAN frame -> CAN ID: ", can_frame.can_id, ",Length: ", can_frame.len, ",Data: ", can_frame.data[:can_frame.len].hex(), ",from: ", addr)
+        except Exception as e:
+            print("Error while handling Cannelloni packet: ", e)
             return
-            
-        if version != CANNELLONI_FRAME_VERSION or op_code != CNL_DATA:
-            return
-
-        pos = CANNELLONI_DATA_PACKET_BASE_SIZE
-        raw_data = memoryview(data)
-        handle["udp_rx_count"] += 1
-
-        for _ in range(count):
-            if pos + CANNELLONI_FRAME_BASE_SIZE > len(data):
-                # Received incomplete packet
-                break
-
-            can_id, len_and_flags = struct.unpack('!IB', raw_data[pos:pos+5])
-            pos += 5
-
-            len_ = len_and_flags & ~CANFD_FRAME
-            flags = len_and_flags & CANFD_FRAME
-
-            if (can_id & CAN_RTR_FLAG) == 0 and pos + len_ > len(data):
-                # Received incomplete packet / can header corrupt!
-                break
-
-            frame = handle.rx_queue.put()
+    
+    def get_received_can_frames(self):
+        frames = []
+        while True:
+            frame = self.rx_queue.take()
             if frame is None:
-                # Allocation error
                 break
+            frames.append(frame)
+        return frames
 
-            frame.can_id = can_id
-            frame.len = len_
-            frame.flags = flags
-
-            if (can_id & CAN_RTR_FLAG) == 0:
-                frame.data[:len_] = raw_data[pos:pos + len_]
-                pos += len_
-
-            # Print the received frame data
-            print("Received CAN frame -> CAN ID: ", frame.can_id, ",Length: ", frame.len, ",Data: ", frame.data[:frame.len].hex(), ",from: ", addr)
+    def clear_received_can_frames(self):
+        while True:
+            frame = self.rx_queue.take()
+            if frame is None:
+                break
 
 # ---------------------------- Execution ----------------------------
-def run_cannelloni(handle):
+def run_cannellonipy(handle, addr=REMOTE_IP, remote_port=REMOTE_PORT):
     print("Running Cannelloni...")
     open_udp_socket(handle)
     # open_can_socket(handle) TODO
@@ -166,13 +175,13 @@ def transmit_udp_packets(handle):
         while True:
             frame = handle.tx_queue.take()
             if frame is not None:
-                #print("Transmitting CAN frame: ", frame.data[:frame.len].hex(), "to", handle.Init["addr"], "on port", handle.Init["remote_port"], "with sequence number", handle.sequence_number)
                 data = bytearray()
-                data.extend(struct.pack('!BBBB', CANNELLONI_FRAME_VERSION, CNL_DATA, handle.sequence_number, 1))
+                data.extend(struct.pack('!BBBB', CANNELLONI_FRAME_VERSION, OPCODE, handle.sequence_number, 1))
                 data.extend(struct.pack('!IB', frame.can_id, frame.len | frame.flags))
                 data.extend(frame.data[:frame.len])
-                print("Transmitting UDP packet with data:", data)
+                # print("Transmitting UDP packet with data:", data.hex())
                 handle.udp_pcb.sendto(data, (REMOTE_IP, REMOTE_PORT))
+                handle.sequence_number = (handle.sequence_number + 1) % 256
     except Exception as e:
         print("Error while transmitting UDP packets: ", e)
         return
@@ -182,8 +191,8 @@ def receive_udp_packets(handle):
         while True:
             data, addr = handle.udp_pcb.recvfrom(1024)
             if data:
+                # print("Received UDP packet from", addr, "with data:", data.hex())
                 handle.handle_cannelloni_frame(data, addr)
-                print("Received UDP packet from", addr, "with data:", data.hex())
     except Exception as e:
         print("Error while receiving UDP packets: ", e)
         return
@@ -197,3 +206,32 @@ def transmit_can_frames(handle):
     # TODO: Implement this function
     # This function should transmit CAN frames from the rx_queue
     pass
+
+
+# ---------------------------- Cannelloni message composition ----------------------------
+
+# UDP packet format:
+# 1 byte - Version
+# 1 byte - Operation code
+# 1 byte - Sequence number
+# 1 byte - Number of CAN frames
+# - CAN frame format:
+# - 4 bytes - CAN ID
+# - 1 byte - Length of hexadecimal data
+# - N bytes - Data
+
+# -----------------------------------------------------------------------------------------
+# | Version | Operation code | Sequence number | Number of CAN frames | CAN frame 1 | ... |
+# -----------------------------------------------------------------------------------------
+
+# EXAMPLE of a UDP packet:
+# 020100010000007b0d48656c6c6f2c20576f726c6421
+# 02 - Version
+# 01 - Operation code
+# 00 - Sequence number
+# 01 - Number of CAN frames
+# 0000007b - CAN ID
+# 0d - Length of data
+# 48656c6c6f2c20576f726c6421 - CAN DATA
+# CAN DATA:
+# 48 65 6c 6c 6f 2c 20 57 6f 72 6c 64 21 -> Hello, World!
