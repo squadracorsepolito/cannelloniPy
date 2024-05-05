@@ -11,9 +11,6 @@ CANNELLONI_DATA_PACKET_BASE_SIZE = 4
 CANNELLONI_FRAME_BASE_SIZE = 5
 CAN_RTR_FLAG = 0x40000000
 
-REMOTE_PORT = 1234
-REMOTE_IP = "0.0.0.0"
-
 # ---------------------------- Utils ----------------------------
 class CanfdFrame:
     def __init__(self):
@@ -49,12 +46,12 @@ class FramesQueue:
         return self.frames[self.head]
 
 class CannelloniHandle:
-    def __init__(self, can_tx_fn=None, can_rx_fn=None, can_buf_size=64):
+    def __init__(self, can_tx_fn=None, can_rx_fn=None, can_buf_size=64, remote_addr=None, remote_port=None):
         self.sequence_number = 0
         self.udp_rx_count = 0
         self.Init = {
-            "addr": REMOTE_IP,
-            "remote_port": REMOTE_PORT,
+            "remote_addr": remote_addr,
+            "remote_port": remote_port,
             "can_buf_size": can_buf_size,
             "can_tx_buf": [CanfdFrame() for _ in range(can_buf_size)],
             "can_rx_buf": [CanfdFrame() for _ in range(can_buf_size)],
@@ -66,6 +63,7 @@ class CannelloniHandle:
         self.udp_pcb = None
         self.can_pcb = None
 
+    # Handle the received Cannelloni frame
     def handle_cannelloni_frame(handle, data, addr):
         try:
             if len(data) < CANNELLONI_DATA_PACKET_BASE_SIZE:
@@ -123,10 +121,11 @@ class CannelloniHandle:
                 break
 
 # ---------------------------- Execution ----------------------------
-def run_cannellonipy(handle, addr=REMOTE_IP, remote_port=REMOTE_PORT):
+# Run the Cannellonipy library
+def run_cannellonipy(handle, remote_addr, remote_port):
     print("Running Cannellonipy...")
-    handle.Init["addr"] = addr
-    handle.Init["remote_port"] = remote_port
+    handle.Init["remote_addr"] = remote_addr
+    handle.Init["remote_port"] = int(remote_port)
 
     open_udp_socket(handle)
     # open_can_socket(handle) TODO
@@ -145,23 +144,23 @@ def run_cannellonipy(handle, addr=REMOTE_IP, remote_port=REMOTE_PORT):
     transmit_udp_packets_thread = threading.Thread(target=transmit_udp_packets, args=(handle,), daemon=True)
     transmit_udp_packets_thread.start()
 
+# Create a UDP socket (send/receive)
 def open_udp_socket(handle):
-    # Create a UDP socket (send/receive)
     try:
         handle.udp_pcb = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # Check with cmd:  sudo tcpdump -i any udp port 1234 -X
-        handle.udp_pcb.bind((REMOTE_IP, REMOTE_PORT))
+        handle.udp_pcb.bind((handle.Init["remote_addr"], handle.Init["remote_port"]))
         if not handle.udp_pcb:
             print("Cannellonipy lib: Failed to create UDP socket")
             return
         else:
-            print("Cannellonipy lib: UDP socket created successfully on port: ", REMOTE_PORT, " and address: ", REMOTE_IP)
+            print("Cannellonipy lib: UDP socket created successfully on port: ", handle.Init["remote_port"], " and address: ", handle.Init["remote_addr"])
     except Exception as e:
         print("Cannellonipy lib: Failed to create UDP socket: ", e)
         return
 
+# Create a CAN socket (send/receive)
 def open_can_socket(handle):
     try:
-        # Create a CAN socket (send/receive)
         # TODO
         if not handle.can_pcb:
             print("Cannellonipy lib: Failed to create CAN socket")
@@ -172,6 +171,7 @@ def open_can_socket(handle):
         print("Cannellonipy lib: Failed to create CAN socket: ", e)
         return
 
+# Transmit CAN frames over UDP
 def transmit_udp_packets(handle):
     try:
         while True:
@@ -181,12 +181,13 @@ def transmit_udp_packets(handle):
                 data.extend(struct.pack('!BBBB', CANNELLONI_FRAME_VERSION, OPCODE, handle.sequence_number, 1))
                 data.extend(struct.pack('!IB', frame.can_id, frame.len | frame.flags))
                 data.extend(frame.data[:frame.len])
-                handle.udp_pcb.sendto(data, (REMOTE_IP, REMOTE_PORT))
+                handle.udp_pcb.sendto(data, (handle.Init["remote_ip"], handle.Init["remote_addr"]))
                 handle.sequence_number = (handle.sequence_number + 1) % 256
     except Exception as e:
         print("Cannellonipy lib: Error while transmitting UDP packets: ", e)
         return
 
+# Receive UDP packets
 def receive_udp_packets(handle):
     try:
         while True:
