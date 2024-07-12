@@ -181,7 +181,7 @@ def transmit_udp_packets(handle):
                 data.extend(struct.pack('!BBBB', CANNELLONI_FRAME_VERSION, OPCODE, handle.sequence_number, 1))
                 data.extend(struct.pack('!IB', frame.can_id, frame.len | frame.flags))
                 data.extend(frame.data[:frame.len])
-                handle.udp_pcb.sendto(data, (handle.Init["remote_ip"], handle.Init["remote_addr"]))
+                handle.udp_pcb.sendto(data, (handle.Init["remote_addr"], handle.Init["remote_port"]))
                 handle.sequence_number = (handle.sequence_number + 1) % 256
     except Exception as e:
         print("Cannellonipy lib: Error while transmitting UDP packets: ", e)
